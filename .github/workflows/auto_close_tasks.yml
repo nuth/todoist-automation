@@ -1,0 +1,28 @@
+name: Automatically reschedule recurring todoist task with the @auto_close label
+
+on:
+  schedule:
+    - cron: '45 21 * * *'
+    - cron: '45 22 * * *'
+
+jobs:
+    auto_close:
+        runs-on: ubuntu-latest
+        steps:
+        - name: Get hour for Europe/Oslo and put into $GITHUB_OUTPUT
+          id: get_hour
+          run: |
+            echo "HOUR=$(TZ=Europe/Oslo date +%H)" >> $GITHUB_OUTPUT
+        - name: Run if get_hour is 23
+          if: steps.get_hour.outputs.HOUR == '23'
+          run: |
+            jq -nR \
+              --slurpfile a <(curl -s -G -X GET \
+                "https://api.todoist.com/rest/v2/tasks?lang=nb" \
+                --data-urlencode "filter=(i dag | forfalt) & @auto_close" \
+                -H "Authorization: Bearer $TODOIST_TOKEN") \
+              '[$a[][] | select(.due.is_recurring == true) | {"type":"item_close", "uuid": (0 | input), "args": {"id": .id}}]' \
+              < <(for i in `seq 1 100`; do uuidgen ; done)
+          shell: bash
+          env:
+            TODOIST_TOKEN: ${{ secrets.TODOIST_TOKEN }}
